@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Oefenen met de maaltafel</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 0; padding: 24px; }
+    .wrap { max-width: 820px; margin: 0 auto; }
+    h1 { font-size: 22px; margin: 0 0 16px; }
+    .card { border: 1px solid rgba(127,127,127,.35); border-radius: 12px; padding: 16px; }
+    .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: end; }
+    label { display: block; font-size: 14px; opacity: .9; margin-bottom: 6px; }
+    input[type="number"], input[type="text"] {
+      width: 220px; padding: 10px 12px; border-radius: 10px;
+      border: 1px solid rgba(127,127,127,.45); font-size: 16px;
+      outline: none;
+    }
+    input[type="text"] { width: 220px; }
+    button {
+      padding: 10px 14px; border-radius: 10px; border: 1px solid rgba(127,127,127,.45);
+      background: transparent; cursor: pointer; font-size: 16px;
+    }
+    button.primary { background: rgba(0, 128, 255, .12); }
+    button:disabled { opacity: .55; cursor: not-allowed; }
+    .muted { font-size: 13px; opacity: .75; margin-top: 8px; }
+    .hidden { display: none; }
+
+    .task {
+      font-size: 32px; font-weight: 700; letter-spacing: .3px;
+      margin: 6px 0 14px;
+    }
+    .hud { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 12px; font-size: 14px; opacity: .9; }
+    .pill { border: 1px solid rgba(127,127,127,.35); padding: 6px 10px; border-radius: 999px; }
+    .ok { color: #0a7a1f; font-weight: 700; }
+    .bad { color: #c02020; font-weight: 800; }
+    table { width: 100%; border-collapse: collapse; margin-top: 14px; }
+    th, td { border-bottom: 1px solid rgba(127,127,127,.25); padding: 10px 8px; text-align: left; }
+    th { font-size: 13px; opacity: .85; }
+    .right { text-align: right; }
+    .summary { margin-top: 10px; font-size: 14px; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Maaltabel — oefening</h1>
+
+  <!-- INSTELSCHERM -->
+  <div id="setup" class="card">
+    <div class="row">
+      <div>
+        <label for="mult">Waarmee vermenigvuldigen</label>
+        <input id="mult" type="number" inputmode="numeric" min="0" max="20" placeholder="Bijv. 4" value="4" />
+      </div>
+      <div>
+        <label for="count">Aantal opgaven</label>
+        <input id="count" type="number" inputmode="numeric" min="1" max="200" placeholder="Bijv. 20" value="20" />
+      </div>
+      <div>
+        <label for="minutes">Tijd (minuten)</label>
+        <input id="minutes" type="number" inputmode="numeric" min="0.1" step="0.1" max="60" placeholder="Bijv. 2" value="2" />
+      </div>
+      <div>
+        <button id="startBtn" class="primary">OK</button>
+      </div>
+    </div>
+    <div class="muted">
+      Tip: je kunt antwoorden en op <b>Enter</b> drukken. Beëindiging — op tijd of wanneer de opgaven op zijn.
+    </div>
+    <div id="setupError" class="muted bad hidden"></div>
+  </div>
+
+  <!-- OPGAVESCHERM -->
+  <div id="game" class="card hidden" aria-live="polite">
+    <div class="hud">
+      <div class="pill">Opgave: <span id="idx">0</span>/<span id="total">0</span></div>
+      <div class="pill">Resterende tijd: <span id="timeLeft">00:00</span></div>
+    </div>
+
+    <div id="task" class="task">—</div>
+
+    <div class="row">
+      <div>
+        <label for="answer">Antwoord</label>
+        <input id="answer" type="text" inputmode="numeric" autocomplete="off" placeholder="Voer een getal in" />
+      </div>
+      <div>
+        <button id="nextBtn" class="primary">Volgende</button>
+      </div>
+      <div class="muted" id="hint"></div>
+    </div>
+  </div>
+
+  <!-- RESULTATENSCHERM -->
+  <div id="results" class="card hidden">
+    <div class="row" style="justify-content: space-between;">
+      <div>
+        <div class="task" style="font-size: 22px; margin: 0 0 6px;">Resultaten</div>
+        <div class="summary" id="summary"></div>
+      </div>
+      <div class="row">
+        <button id="restartBtn" class="primary">Opnieuw</button>
+        <button id="changeBtn">Wijzigen</button>
+      </div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Opgave</th>
+          <th>Correct</th>
+          <th>Jouw antwoord</th>
+          <th class="right">Seconden</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+
+</div>
+
+<script>
+(() => {
+  // --- DOM ---
+  const setupEl = document.getElementById('setup');
+  const gameEl = document.getElementById('game');
+  const resultsEl = document.getElementById('results');
+
+  const multEl = document.getElementById('mult');
+  const countEl = document.getElementById('count');
+  const minutesEl = document.getElementById('minutes');
+  const startBtn = document.getElementById('startBtn');
+  const setupError = document.getElementById('setupError');
+
+  const idxEl = document.getElementById('idx');
+  const totalEl = document.getElementById('total');
+  const timeLeftEl = document.getElementById('timeLeft');
+  const taskEl = document.getElementById('task');
+  const answerEl = document.getElementById('answer');
+  const nextBtn = document.getElementById('nextBtn');
+  const hintEl = document.getElementById('hint');
+
+  const tbody = document.getElementById('tbody');
+  const summaryEl = document.getElementById('summary');
+  const restartBtn = document.getElementById('restartBtn');
+  const changeBtn = document.getElementById('changeBtn');
+
+  // --- Status ---
+  let settings = null;        // { mult, count, minutes, durationMs }
+  let examples = [];          // [{a,b,correct, user, ms, ok}]
+  let currentIndex = 0;
+  let deadline = 0;
+  let timerId = null;
+  let questionStart = 0;
+  let finished = false;
+
+  // bereik van de tweede factor:
+  const MIN_B = 0;
+  const MAX_B = 10; // wijzig naar 12 indien nodig: 0..12
+
+  function pad2(n) { return String(n).padStart(2, '0'); }
+
+  function formatMs(ms) {
+    const s = Math.max(0, Math.floor(ms / 1000));
+    const mm = Math.floor(s / 60);
+    const ss = s % 60;
+    return `${pad2(mm)}:${pad2(ss)}`;
+  }
+
+  function show(el) { el.classList.remove('hidden'); }
+  function hide(el) { el.classList.add('hidden'); }
+
+  function validateSettings() {
+    const mult = Number(multEl.value);
+    const count = Number(countEl.value);
+    const minutes = Number(minutesEl.value);
+
+    const errs = [];
+    if (!Number.isFinite(mult) || mult < 0 || mult > 20) errs.push('“Waarmee vermenigvuldigen” moet een getal 0..20 zijn.');
+    if (!Number.isFinite(count) || count < 1 || count > 200) errs.push('“Aantal opgaven” moet 1..200 zijn.');
+    if (!Number.isFinite(minutes) || minutes <= 0 || minutes > 60) errs.push('“Tijd” moet groter dan 0 en maximaal 60 minuten zijn.');
+
+    if (errs.length) return { ok: false, msg: errs.join(' ') };
+    return { ok: true, mult, count, minutes, durationMs: minutes * 60 * 1000 };
+  }
+
+  function randInt(min, max) {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+  }
+
+  function buildExamples(mult, count) {
+    const arr = [];
+    for (let i = 0; i < count; i++) {
+      const b = randInt(MIN_B, MAX_B);
+      arr.push({
+        a: mult,
+        b,
+        correct: mult * b,
+        user: null,
+        ms: null,
+        ok: null
+      });
+    }
+    return arr;
+  }
+
+  function updateHUD() {
+    idxEl.textContent = String(Math.min(currentIndex + 1, examples.length));
+    totalEl.textContent = String(examples.length);
+  }
+
+  function renderQuestion() {
+    if (currentIndex >= examples.length) {
+      finish('De opgaven zijn op.');
+      return;
+    }
+    const ex = examples[currentIndex];
+    taskEl.textContent = `${ex.a} × ${ex.b} = ?`;
+    answerEl.value = '';
+    answerEl.focus();
+    hintEl.textContent = '';
+    updateHUD();
+    questionStart = performance.now();
+  }
+
+  function tick() {
+    const msLeft = deadline - Date.now();
+    timeLeftEl.textContent = formatMs(msLeft);
+    if (msLeft <= 0) {
+      finish('De tijd is voorbij.');
+    }
+  }
+
+  function startTimer() {
+    deadline = Date.now() + settings.durationMs;
+    tick();
+    timerId = setInterval(tick, 200);
+  }
+
+  function stopTimer() {
+    if (timerId) clearInterval(timerId);
+    timerId = null;
+  }
+
+  function parseUserAnswer() {
+    // sta invoer toe zoals " 12 " en "12,"
+    const raw = (answerEl.value || '').trim().replace(',', '.');
+    if (raw === '') return null;
+    // alleen gehele getallen:
+    if (!/^-?\d+$/.test(raw)) return NaN;
+    return Number(raw);
+  }
+
+  function submitAnswer() {
+    if (finished) return;
+
+    const ex = examples[currentIndex];
+    const t = performance.now();
+    const ms = Math.max(0, t - questionStart);
+
+    const val = parseUserAnswer();
+    if (val === null) {
+      hintEl.textContent = 'Voer een antwoord in.';
+      answerEl.focus();
+      return;
+    }
+    if (!Number.isFinite(val)) {
+      hintEl.textContent = 'Het antwoord moet een geheel getal zijn.';
+      answerEl.focus();
+      return;
+    }
+
+    ex.user = val;
+    ex.ms = ms;
+    ex.ok = (val === ex.correct);
+
+    currentIndex++;
+    renderQuestion();
+  }
+
+  function finish(reason) {
+    if (finished) return;
+    finished = true;
+    stopTimer();
+
+    // als de gebruiker op een vraag zat en niet antwoordde — leeg antwoord niet opslaan
+
+    // UI
+    hide(gameEl);
+    show(resultsEl);
+
+    // samenvatting
+    const answered = examples.filter(e => e.user !== null).length;
+    const correct = examples.filter(e => e.ok === true).length;
+    const wrong = examples.filter(e => e.ok === false).length;
+
+    const avgSec = (() => {
+      const xs = examples.filter(e => typeof e.ms === 'number').map(e => e.ms / 1000);
+      if (!xs.length) return 0;
+      const sum = xs.reduce((a,b) => a + b, 0);
+      return sum / xs.length;
+    })();
+
+    summaryEl.textContent =
+      `${reason} Antwoorden: ${answered}/${examples.length}. Correct: ${correct}. Fout: ${wrong}. ` +
+      `Gemiddelde tijd: ${avgSec.toFixed(1)} s.`;
+
+    // tabel
+    tbody.innerHTML = '';
+    examples.forEach((e, i) => {
+      const tr = document.createElement('tr');
+
+      const tdN = document.createElement('td');
+      tdN.textContent = String(i + 1);
+
+      const tdEx = document.createElement('td');
+      tdEx.textContent = `${e.a} × ${e.b}`;
+
+      const tdC = document.createElement('td');
+      tdC.textContent = String(e.correct);
+
+      const tdU = document.createElement('td');
+      if (e.user === null) {
+        tdU.innerHTML = '<span class="bad">geen antwoord</span>';
+      } else if (e.ok) {
+        tdU.innerHTML = `<span class="ok">${e.user}</span>`;
+      } else {
+        tdU.innerHTML = `<span class="bad">${e.user}</span>`;
+      }
+
+      const tdT = document.createElement('td');
+      tdT.className = 'right';
+      tdT.textContent = (typeof e.ms === 'number') ? (e.ms / 1000).toFixed(1) : '—';
+
+      tr.append(tdN, tdEx, tdC, tdU, tdT);
+      tbody.appendChild(tr);
+    });
+  }
+
+  function startGame(newSettings) {
+    settings = newSettings;
+    examples = buildExamples(settings.mult, settings.count);
+    currentIndex = 0;
+    finished = false;
+
+    hide(setupEl);
+    hide(resultsEl);
+    show(gameEl);
+
+    totalEl.textContent = String(examples.length);
+    startTimer();
+    renderQuestion();
+  }
+
+  function backToSetup() {
+    stopTimer();
+    finished = true;
+
+    hide(gameEl);
+    hide(resultsEl);
+    show(setupEl);
+
+    setupError.textContent = '';
+    hide(setupError);
+    startBtn.disabled = false;
+  }
+
+  // --- Gebeurtenissen ---
+  startBtn.addEventListener('click', () => {
+    const v = validateSettings();
+    if (!v.ok) {
+      setupError.textContent = v.msg;
+      show(setupError);
+      return;
+    }
+    hide(setupError);
+    startGame(v);
+  });
+
+  nextBtn.addEventListener('click', submitAnswer);
+
+  answerEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      submitAnswer();
+    }
+  });
+
+  restartBtn.addEventListener('click', () => {
+    // opnieuw met dezelfde instellingen
+    if (!settings) return;
+    startGame({ ...settings });
+  });
+
+  changeBtn.addEventListener('click', backToSetup);
+
+  // gemak: Enter op het instelscherm start
+  [multEl, countEl, minutesEl].forEach(el => {
+    el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        startBtn.click();
+      }
+    });
+  });
+})();
+</script>
+</body>
+</html>
