@@ -19,6 +19,8 @@
       outline: none;
     }
     input[type="text"] { width: 220px; }
+    input.flash-ok { background: rgba(0, 180, 60, .35); border-color: rgba(0, 180, 60, .9); }
+    input.flash-bad { background: rgba(220, 0, 0, .35); border-color: rgba(220, 0, 0, .9); }
     button {
       padding: 10px 14px; border-radius: 10px; border: 1px solid rgba(127,127,127,.45);
       background: transparent; cursor: pointer; font-size: 16px;
@@ -155,7 +157,9 @@
   let deadline = 0;
   let timerId = null;
   let questionStart = 0;
+  let startedAt = 0;
   let finished = false;
+  let flashTimerId = null;
 
   // bereik van de tweede factor:
   const MIN_B = 0;
@@ -194,11 +198,12 @@
   function buildExamples(mult, count) {
     const arr = [];
     for (let i = 0; i < count; i++) {
-      const b = randInt(MIN_B, MAX_B);
+      const other = randInt(MIN_B, MAX_B);
+      const swap = Math.random() < 0.5;
       arr.push({
-        a: mult,
-        b,
-        correct: mult * b,
+        a: swap ? other : mult,
+        b: swap ? mult : other,
+        correct: mult * other,
         user: null,
         ms: null,
         ok: null
@@ -212,13 +217,23 @@
     totalEl.textContent = String(examples.length);
   }
 
+  function flashAnswer(ok) {
+    if (flashTimerId) clearTimeout(flashTimerId);
+    answerEl.classList.remove('flash-ok', 'flash-bad');
+    void answerEl.offsetWidth;
+    answerEl.classList.add(ok ? 'flash-ok' : 'flash-bad');
+    flashTimerId = setTimeout(() => {
+      answerEl.classList.remove('flash-ok', 'flash-bad');
+    }, 150);
+  }
+
   function renderQuestion() {
     if (currentIndex >= examples.length) {
       finish('De opgaven zijn op.');
       return;
     }
     const ex = examples[currentIndex];
-    taskEl.textContent = `${ex.b} × ${ex.a} = ?`;
+    taskEl.textContent = `${ex.a} × ${ex.b} = ?`;
     answerEl.value = '';
     answerEl.focus();
     hintEl.textContent = '';
@@ -235,7 +250,8 @@
   }
 
   function startTimer() {
-    deadline = Date.now() + settings.durationMs;
+    startedAt = Date.now();
+    deadline = startedAt + settings.durationMs;
     tick();
     timerId = setInterval(tick, 200);
   }
@@ -277,6 +293,7 @@
     ex.ms = ms;
     ex.ok = (val === ex.correct);
 
+    flashAnswer(ex.ok);
     currentIndex++;
     renderQuestion();
   }
@@ -296,17 +313,14 @@
     const answered = examples.filter(e => e.user !== null).length;
     const correct = examples.filter(e => e.ok === true).length;
     const wrong = examples.filter(e => e.ok === false).length;
-
-    const avgSec = (() => {
-      const xs = examples.filter(e => typeof e.ms === 'number').map(e => e.ms / 1000);
-      if (!xs.length) return 0;
-      const sum = xs.reduce((a,b) => a + b, 0);
-      return sum / xs.length;
-    })();
+    const usedSec = Math.min(
+      Math.ceil((Date.now() - startedAt) / 1000),
+      Math.ceil(settings.durationMs / 1000)
+    );
+    const totalSec = Math.ceil(settings.durationMs / 1000);
 
     summaryEl.textContent =
-      `${reason} Antwoorden: ${answered}/${examples.length}. Correct: ${correct}. Fout: ${wrong}. ` +
-      `Gemiddelde tijd: ${avgSec.toFixed(1)} s.`;
+      `${reason} Antwoorden: ${answered}/${examples.length}. Tijd: ${usedSec}/${totalSec} sec. Correct: ${correct}. Fout: ${wrong}.`;
 
     // tabel
     tbody.innerHTML = '';
@@ -317,7 +331,7 @@
       tdN.textContent = String(i + 1);
 
       const tdEx = document.createElement('td');
-      tdEx.textContent = `${e.b} × ${e.a}`;
+      tdEx.textContent = `${e.a} × ${e.b}`;
 
       const tdC = document.createElement('td');
       tdC.textContent = String(e.correct);
